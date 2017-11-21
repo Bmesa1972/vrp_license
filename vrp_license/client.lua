@@ -26,14 +26,12 @@ local dmvpedpos = {
 local weaponlicense_location = {450.96667480469, -977.23480224609, 30.689584732056}
 
 local DTutOpen = false
-TestDone = false
+BuyLicense = false
 
-RegisterNetEvent('dmv:CheckLicStatus')
-AddEventHandler('dmv:CheckLicStatus', function()
---Check if player has completed theory test
-	TestDone = true
-	theorylock = false
-	testlock = false
+RegisterNetEvent('gun:CheckLicStatus')
+AddEventHandler('gun:CheckLicStatus', function()
+--Check if player has buy license
+	BuyLicense = true
 end)
 
 --[[Functions]]--
@@ -44,11 +42,8 @@ function drawNotification(text)
 	DrawNotification(false, false)
 end
 
-function DrawMissionText2(m_text, showtime)
-    ClearPrints()
-	SetTextEntry_2("STRING")
-	AddTextComponentString(m_text)
-	DrawSubtitleTimed(showtime, 1)
+function LocalPed()
+	return GetPlayerPed(-1)
 end
 
 function drawTxt(text,font,centre,x,y,scale,r,g,b,a)
@@ -67,27 +62,38 @@ function drawTxt(text,font,centre,x,y,scale,r,g,b,a)
 end
 
 --[[Arrays]]--
-onTtest = false
-onPtest = false
-onTestEvent = 0
-theorylock = true
-testlock = true
+BuyLicense = true
 
-function EndDTest()
-			TriggerServerEvent('dmv:success')
-			onPtest = false
-			TestDone = true
-			theorylock = false
-			testlock = false
-			drawNotification("~g~You bought your Firearms License")	
-			EndTestTasks()
+function startbuy()
+        if BuyLicense then
+		    TriggerServerEvent('gun:buysuccess')
+		end
 end
 
--- ***************** NUI Callback Methods
--- Callbacks pages opening
-RegisterNUICallback('question', function(data, cb)
-  SendNUIMessage({openSection = "question"})
+RegisterNetEvent('gun:startbuy')
+AddEventHandler('gun:startbuy', function()
+	openGui()
+	Menu.hidden = not Menu.hidden
+end)
+
+RegisterNetEvent('gun:EndBuyLicense')
+AddEventHandler('gun:EndBuyLicense', function()
+	EndBuyLicense()
+end)
+
+function EndBuyLicense()
+        if BuyLicense then
+			TriggerServerEvent('gun:success')
+			BuyLicense = true
+			drawNotification("~g~You bought your Firearms License")
+			EndTestTasks()
+		end
+end
+
+RegisterNUICallback('close', function(data, cb)
+  closeGui()
   cb('ok')
+  BuyLicense = true
 end)
 
 ---------------------------------- DMV PED ----------------------------------
@@ -146,14 +152,14 @@ end)
 function LICENSEMenu()
 	ClearMenu()
     options.menu_title = "Buy Firearms License"
-	Menu.addButton("Obtein Firearms License","VehLicenseMenu",nil)
+	Menu.addButton("Obtein Firearms License","FireArmsMenu",nil)
     Menu.addButton("Close","CloseMenu",nil) 
 end
 
-function VehLicenseMenu()
+function FireArmsMenu()
     ClearMenu()
     options.menu_title = "Firearms License"
-	Menu.addButton("Buy Firearms License    $5000","EndDTest",nil)
+	Menu.addButton("Buy Firearms License    $5000","startbuy",nil)
     Menu.addButton("Return","LICENSEMenu",nil) 
 end
 

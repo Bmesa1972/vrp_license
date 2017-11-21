@@ -12,27 +12,25 @@ local cfg = module("vrp", "cfg/base")
 local lang = Lang.new(module("vrp", "cfg/lang/"..cfg.lang) or {})
 
 --[[SQL]]--
-MySQL.createCommand("vRP/dmv_column", "ALTER TABLE vrp_users ADD IF NOT EXISTS GunLicense varchar(50) NOT NULL default 'Required'")
-MySQL.createCommand("vRP/dmv_success", "UPDATE vrp_users SET GunLicense='Passed' WHERE id = @id")
-MySQL.createCommand("vRP/dmv_search", "SELECT * FROM vrp_users WHERE id = @id AND GunLicense = 'Passed'")
+MySQL.createCommand("vRP/gun_column", "ALTER TABLE vrp_users ADD IF NOT EXISTS GunLicense varchar(55) NOT NULL default 'Required'")
+MySQL.createCommand("vRP/gun_success", "UPDATE vrp_users SET GunLicense='Passed' WHERE id = @id")
+MySQL.createCommand("vRP/gun_search", "SELECT * FROM vrp_users WHERE id = @id AND GunLicense = 'Passed'")
 
 -- init
-MySQL.query("vRP/dmv_column")
+MySQL.query("vRP/gun_column")
 
---[[DMV Test]]--
-
-RegisterServerEvent("dmv:success")
-AddEventHandler("dmv:success", function()
+RegisterServerEvent("gun:success")
+AddEventHandler("gun:success", function()
 	local user_id = vRP.getUserId({source})
-	MySQL.query("vRP/dmv_success", {id = user_id})
+	MySQL.query("vRP/gun_success", {id = user_id})
 end)
 
-RegisterServerEvent("dmv:success")
-AddEventHandler("dmv:success", function()
+RegisterServerEvent("gun:buysuccess")
+AddEventHandler("gun:buysuccess", function()
 	local user_id = vRP.getUserId({source})
 	local player = vRP.getUserSource({user_id})
 	if vRP.tryPayment({user_id,5000}) then
-        TriggerClientEvent('dmv:success',player)
+        TriggerClientEvent('gun:EndBuyLicense',player)
 	else
 		vRPclient.notify(player,{"~r~Not enough money."})
 	end
@@ -40,9 +38,9 @@ end)
 
 --[[ ***** SPAWN CHECK ***** ]]
 AddEventHandler("vRP:playerSpawn", function(user_id, source, first_spawn)
-	MySQL.query("vRP/dmv_search", {id = user_id}, function(rows, affected)
+	MySQL.query("vRP/gun_search", {id = user_id}, function(rows, affected)
       if #rows > 0 then
-          TriggerClientEvent('dmv:CheckLicStatus',source)
+          TriggerClientEvent('gun:CheckLicStatus',source)
       end
     end)
 end)
@@ -55,11 +53,11 @@ local choice_asklc = {function(player,choice)
       vRPclient.notify(player,{"Asking firearms license..."})
       vRP.request({nplayer,"Do you want to show your license?",15,function(nplayer,ok)
         if ok then
-          MySQL.query("vRP/dmv_search", {id = nuser_id}, function(rows, affected)
+          MySQL.query("vRP/gun_search", {id = nuser_id}, function(rows, affected)
             if #rows > 0 then
-			  vRPclient.notify(player,{"User license: ~g~OK"})
+			  vRPclient.notify(player,{"Firearms license: ~g~OK"})
 			else
-			  vRPclient.notify(player,{"User license: ~r~REQUIRED"})
+			  vRPclient.notify(player,{"Firearms license: ~r~Required"})
             end
           end)
         else
