@@ -1,87 +1,131 @@
---[[BASE]]--
-MySQL = module("vrp_mysql", "MySQL")
-local Tunnel = module("vrp", "lib/Tunnel")
-local Proxy = module("vrp", "lib/Proxy")
+Tunnel = module("vrp", "lib/Tunnel")
+Proxy = module("vrp", "lib/Proxy")
+htmlEntities = module("vrp", "lib/htmlEntities")
 
+vRPgun = {}
 vRP = Proxy.getInterface("vRP")
-vRPclient = Tunnel.getInterface("vRP","vrp_license")
+vRPclient = Tunnel.getInterface("vRP")
+GUNclient = Tunnel.getInterface("vrp_license")
+Tunnel.bindInterface("vrp_license",vRPgun)
+Proxy.addInterface("vrp_license",vRPgun)
+cfg = module("vrp_license", "cfg/dmv")
+-- load global and local languages
+Luang = module("vrp", "lib/Luang")
+Lang = Luang()
+Lang:loadLocale(cfg.lang, module("vrp", "cfg/lang/"..cfg.lang) or {})
+Lang:loadLocale(cfg.lang, module("vrp_license", "cfg/lang/"..cfg.lang) or {})
+lang = Lang.lang[cfg.lang]
 
---[[LANG]]--
-local Lang = module("vrp", "lib/Lang")
-local cfg = module("vrp", "cfg/base")
-local lang = Lang.new(module("vrp", "cfg/lang/"..cfg.lang) or {})
+function vRPgun.setLicense()
+	local user_id = vRP.getUserId(source)
+	vRP.setUData(user_id,"vRP:gun:license",json.encode(os.date("%x")))
+end
 
---[[SQL]]--
-MySQL.createCommand("vRP/gun_column", "ALTER TABLE vrp_users ADD IF NOT EXISTS GunLicense varchar(55) NOT NULL default 'Required'")
-MySQL.createCommand("vRP/gun_success", "UPDATE vrp_users SET GunLicense='Passed' WHERE id = @id")
-MySQL.createCommand("vRP/gun_search", "SELECT * FROM vrp_users WHERE id = @id AND GunLicense = 'Passed'")
-
--- init
-MySQL.query("vRP/gun_column")
-
-RegisterServerEvent("gun:success")
-AddEventHandler("gun:success", function()
-	local user_id = vRP.getUserId({source})
-	MySQL.query("vRP/gun_success", {id = user_id})
-end)
-
-RegisterServerEvent("gun:buysuccess")
-AddEventHandler("gun:buysuccess", function()
-	local user_id = vRP.getUserId({source})
-	local player = vRP.getUserSource({user_id})
-	if vRP.tryPayment({user_id,5000}) then
-        TriggerClientEvent('gun:EndBuyLicense',player)
+function vRPgun.payFirearmsLicense()
+	local user_id = vRP.getUserId(source)
+	local player = vRP.getUserSource(user_id)
+	if vRP.tryPayment(user_id,cfg.dmv.price.practical) then
+        GUNclient.payFirearmsLicense(player)
 	else
-		vRPclient.notify(player,{"~r~Not enough money."})
+		vRPclient.notify(player,lang.money.not_enough())
+	end
+end
+
+AddEventHandler("vRP:playerSpawn", function(user_id, source, first_spawn)
+	local user_id = vRP.getUserId(source)
+	local player = vRP.getUserSource(user_id)
+	local data = vRP.getUData(user_id,"vRP:gun:license")
+	if data then
+	  local license = json.decode(data)
+	  if license and license ~= 0 then
+        GUNclient.setLicense(player, true)
+	  end
 	end
 end)
 
---[[ ***** SPAWN CHECK ***** ]]
-AddEventHandler("vRP:playerSpawn", function(user_id, source, first_spawn)
-	MySQL.query("vRP/gun_search", {id = user_id}, function(rows, affected)
-      if #rows > 0 then
-          TriggerClientEvent('gun:CheckLicStatus',source)
-      end
-    end)
-end)
-
---[[POLICE MENU]]--
 local choice_asklc = {function(player,choice)
-  vRPclient.getNearestPlayer(player,{10},function(nplayer)
-    local nuser_id = vRP.getUserId({nplayer})
-    if nuser_id ~= nil then
-      vRPclient.notify(player,{"Asking firearms license..."})
-      vRP.request({nplayer,"Do you want to show your license?",15,function(nplayer,ok)
-        if ok then
-          MySQL.query("vRP/gun_search", {id = nuser_id}, function(rows, affected)
-            if #rows > 0 then
-			  vRPclient.notify(player,{"Firearms license: ~g~OK"})
-			else
-			  vRPclient.notify(player,{"Firearms license: ~r~Required"})
-            end
-          end)
-        else
-          vRPclient.notify(player,{lang.common.request_refused()})
+  local nplayer = vRPclient.getNearestPlayer(player,10)
+  local nuser_id = vRP.getUserId(nplayer)
+  if nuser_id then
+    vRPclient.notify(player,lang.dmv.police.ask())
+    if vRP.request(nplayer,lang.dmv.police.request(),15) then
+	  local data = vRP.getUData(nuser_id,"vRP:gun:license")
+      if data then
+	    local license = json.decode(data)
+		if license and license ~= 0 then
+          local identity = vRP.getUserIdentity(nuser_id)
+          if identity then
+            -- display identity and business
+            local name = identity.name
+            local firstname = identity.firstname
+            local age = identity.age
+            local phone = identity.phone
+            local registration = identity.registration
+          
+            local content = lang.dmv.police.license({name,firstname,age,registration,phone,license})
+            vRPclient.setDiv(player,"police_identity",".div_police_identity{ background-color: rgba(0,0,0,0.75); color: white; font-weight: bold; width: 500px; padding: 10px; margin: auto; margin-top: 150px; }",content)
+            -- request to hide div
+            vRP.request(player, lang.dmv.police.request_hide(), 1000)
+            vRPclient.removeDiv(player,"police_identity")
+          end
+	    else
+	      vRPclient.notify(player,lang.dmv.police.no_license())
         end
-      end})
+	  else
+	    vRPclient.notify(player,lang.dmv.police.no_license())
+      end
     else
-      vRPclient.notify(player,{lang.common.no_player_near()})
+      vRPclient.notify(player,lang.common.request_refused())
+    end
+  else
+    vRPclient.notify(player,lang.common.no_player_near())
+  end
+end, lang.dmv.police.check_desc()}
+
+local choice_takelc = {function(player,choice)
+  local nplayer = vRPclient.getNearestPlayer(player,10)
+  local nuser_id = vRP.getUserId(nplayer)
+  if nuser_id then
+    if vRP.request(player,lang.dmv.police.confirm(),15) then
+	  local data = vRP.getUData(nuser_id,"vRP:gun:license")
+      if data then
+	    local license = json.decode(data)
+		if license and license ~= 0 then
+          GUNclient.setLicense(nplayer, false)
+	      vRP.setUData(nuser_id,"vRP:gun:license",json.encode())
+	      vRPclient.notify(nplayer,lang.dmv.police.license_taken())
+	      vRPclient.notify(player,lang.dmv.police.took_license())
+	    else
+	      vRPclient.notify(player,lang.dmv.police.no_license())
+        end
+	  else
+	    vRPclient.notify(player,lang.dmv.police.no_license())
+      end
+    else
+      vRPclient.notify(player,lang.common.request_refused())
+    end
+  else
+    vRPclient.notify(player,lang.common.no_player_near())
+  end
+end, lang.dmv.police.take_desc()}
+
+Citizen.CreateThread(function()
+  vRP.registerMenuBuilder("police", function(add, data)
+    local player = data.player
+  
+    local user_id = vRP.getUserId(player)
+    if user_id ~= nil then
+      local choices = {}
+	  
+      if vRP.hasPermission(user_id,lang.dmv.police.perm_ask()) then
+         choices[lang.dmv.police.check()] = choice_asklc
+      end
+	  
+      if vRP.hasPermission(user_id,lang.dmv.police.perm_take()) then
+         choices[lang.dmv.police.take()] = choice_takelc
+      end
+  	
+      add(choices)
     end
   end)
-end, "Check firearms license from the nearest player."}
-
-vRP.registerMenuBuilder({"police", function(add, data)
-  local player = data.player
-
-  local user_id = vRP.getUserId({player})
-  if user_id ~= nil then
-    local choices = {}
-
-    -- build police menu
-    if vRP.hasPermission({user_id,"police.weapon_search"}) then
-       choices["Check firearms license"] = choice_asklc
-    end
-	
-    add(choices)
-  end
-end})
+end)
